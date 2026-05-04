@@ -218,15 +218,18 @@ export async function getEmployees() {
 
 export async function createEmployee(employeeData) {
     if (!employeeData.requesterIsAdmin) {
-        return { response: { ok: false }, data: { error: "Only admins can add employees." } };
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can add employees." }
+        };
     }
 
     const { data, error } = await supabase
         .from("employees")
         .insert({
-            employee_id: employeeData.employee_id,
-            name: employeeData.name,
-            role: employeeData.role,
+            employee_id: employeeData.employee_id.trim(),
+            name: employeeData.name.trim(),
+            role: employeeData.role.trim(),
             is_admin: employeeData.is_admin
         })
         .select()
@@ -234,40 +237,55 @@ export async function createEmployee(employeeData) {
 
     return {
         response: { ok: !error },
-        data: error ? { error: error.message } : { message: "Employee created successfully.", employee: data }
+        data: error
+            ? { error: error.message }
+            : { message: "Employee created successfully.", employee: data }
     };
 }
 
 export async function updateEmployee(id, employeeData) {
     if (!employeeData.requesterIsAdmin) {
-        return { response: { ok: false }, data: { error: "Only admins can update employees." } };
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can update employees." }
+        };
     }
 
     const { error } = await supabase
         .from("employees")
         .update({
-            name: employeeData.name,
-            role: employeeData.role,
+            name: employeeData.name.trim(),
+            role: employeeData.role.trim(),
             is_admin: employeeData.is_admin
         })
         .eq("id", id);
 
     return {
         response: { ok: !error },
-        data: error ? { error: error.message } : { message: "Employee updated successfully." }
+        data: error
+            ? { error: error.message }
+            : { message: "Employee updated successfully." }
     };
 }
 
 export async function deleteEmployee(id, requesterIsAdmin) {
     if (!requesterIsAdmin) {
-        return { response: { ok: false }, data: { error: "Only admins can delete employees." } };
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can delete employees." }
+        };
     }
 
-    const { error } = await supabase.from("employees").delete().eq("id", id);
+    const { error } = await supabase
+        .from("employees")
+        .delete()
+        .eq("id", id);
 
     return {
         response: { ok: !error },
-        data: error ? { error: error.message } : { message: "Employee deleted successfully." }
+        data: error
+            ? { error: error.message }
+            : { message: "Employee deleted successfully." }
     };
 }
 
@@ -285,7 +303,10 @@ export async function getMfinds() {
 
 export async function createMfind(mfindName, isAdmin) {
     if (!isAdmin) {
-        return { response: { ok: false }, data: { error: "Only admins can create M-Finds." } };
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can create M-Finds." }
+        };
     }
 
     const { data, error } = await supabase
@@ -299,13 +320,18 @@ export async function createMfind(mfindName, isAdmin) {
 
     return {
         response: { ok: !error },
-        data: error ? { error: error.message } : { message: "M-Find created successfully.", mfind: data }
+        data: error
+            ? { error: error.message }
+            : { message: "M-Find created successfully.", mfind: data }
     };
 }
 
 export async function deleteMfind(mfindId, isAdmin) {
     if (!isAdmin) {
-        return { response: { ok: false }, data: { error: "Only admins can delete M-Finds." } };
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can delete M-Finds." }
+        };
     }
 
     const { error } = await supabase
@@ -316,41 +342,175 @@ export async function deleteMfind(mfindId, isAdmin) {
 
     return {
         response: { ok: !error },
-        data: error ? { error: error.message } : { message: "M-Find deleted successfully." }
+        data: error
+            ? { error: error.message }
+            : { message: "M-Find deleted successfully." }
     };
 }
 
-/* Temporary placeholders so the app does not go blank.
-   We will replace these with real Supabase logic next. */
+export async function getCurrentAssignment(employeeDbId) {
+    const { data, error } = await supabase
+        .from("mfind_assignments")
+        .select(`
+      *,
+      mfinds (
+        mfind_name
+      )
+    `)
+        .eq("employee_id", employeeDbId)
+        .eq("status", "active")
+        .maybeSingle();
 
-export async function getCurrentAssignment() {
-    return { response: { ok: true }, data: null };
-}
+    if (error || !data) {
+        return {
+            response: { ok: true },
+            data: null
+        };
+    }
 
-export async function assignMfind() {
     return {
-        response: { ok: false },
-        data: { error: "Clock-in is being moved to Supabase next." }
+        response: { ok: true },
+        data: {
+            ...data,
+            mfind_name: data.mfinds?.mfind_name
+        }
     };
 }
 
-export async function releaseMfind() {
+export async function assignMfind(employeeDbId, mfindId) {
+    const { data: existingAssignment } = await supabase
+        .from("mfind_assignments")
+        .select("*")
+        .eq("employee_id", employeeDbId)
+        .eq("status", "active")
+        .maybeSingle();
+
+    if (existingAssignment) {
+        return {
+            response: { ok: false },
+            data: { error: "You already have an active M-Find." }
+        };
+    }
+
+    const { data: selectedMfind, error: mfindError } = await supabase
+        .from("mfinds")
+        .select("*")
+        .eq("id", mfindId)
+        .maybeSingle();
+
+    if (mfindError || !selectedMfind) {
+        return {
+            response: { ok: false },
+            data: { error: "M-Find not found." }
+        };
+    }
+
+    if (!selectedMfind.is_available) {
+        return {
+            response: { ok: false },
+            data: { error: "This M-Find is already unavailable." }
+        };
+    }
+
+    const { error: insertError } = await supabase
+        .from("mfind_assignments")
+        .insert({
+            employee_id: employeeDbId,
+            mfind_id: mfindId,
+            status: "active"
+        });
+
+    if (insertError) {
+        return {
+            response: { ok: false },
+            data: { error: insertError.message }
+        };
+    }
+
+    const { error: updateError } = await supabase
+        .from("mfinds")
+        .update({ is_available: false })
+        .eq("id", mfindId);
+
+    if (updateError) {
+        return {
+            response: { ok: false },
+            data: { error: updateError.message }
+        };
+    }
+
     return {
-        response: { ok: false },
-        data: { error: "Clock-out is being moved to Supabase next." }
+        response: { ok: true },
+        data: { message: "M-Find assigned successfully." }
     };
 }
+
+export async function releaseMfind(employeeDbId) {
+    const { data: activeAssignment, error: assignmentError } = await supabase
+        .from("mfind_assignments")
+        .select("*")
+        .eq("employee_id", employeeDbId)
+        .eq("status", "active")
+        .maybeSingle();
+
+    if (assignmentError || !activeAssignment) {
+        return {
+            response: { ok: false },
+            data: { error: "No active assignment found." }
+        };
+    }
+
+    const { error: updateAssignmentError } = await supabase
+        .from("mfind_assignments")
+        .update({
+            status: "completed",
+            released_at: new Date().toISOString()
+        })
+        .eq("id", activeAssignment.id);
+
+    if (updateAssignmentError) {
+        return {
+            response: { ok: false },
+            data: { error: updateAssignmentError.message }
+        };
+    }
+
+    const { error: updateMfindError } = await supabase
+        .from("mfinds")
+        .update({ is_available: true })
+        .eq("id", activeAssignment.mfind_id);
+
+    if (updateMfindError) {
+        return {
+            response: { ok: false },
+            data: { error: updateMfindError.message }
+        };
+    }
+
+    return {
+        response: { ok: true },
+        data: { message: "M-Find released successfully." }
+    };
+}
+
+/* Bathroom functions are still temporary. */
 
 export async function getBathroomEmployees() {
     return getEmployees();
 }
 
 export async function getBathroomSchedule() {
-    return { response: { ok: true }, data: [] };
+    return {
+        response: { ok: true },
+        data: []
+    };
 }
 
 export async function getTodayBathroomAssignment() {
-    return { response: { ok: true }, data: null };
+    return {
+        response: { ok: true },
+        data: null
+    };
 }
 
 export async function createBathroomAssignment() {
