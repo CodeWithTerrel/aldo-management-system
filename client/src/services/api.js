@@ -500,36 +500,190 @@ export async function getBathroomEmployees() {
 }
 
 export async function getBathroomSchedule() {
+    const { data, error } = await supabase
+        .from("bathroom_schedule")
+        .select(`
+      id,
+      employee_id,
+      schedule_date,
+      employees (
+        name,
+        role
+      )
+    `)
+        .order("schedule_date", { ascending: true });
+
+    if (error) {
+        return {
+            response: { ok: false },
+            data: { error: error.message }
+        };
+    }
+
+    const formattedData = data.map((entry) => ({
+        id: entry.id,
+        employee_id: entry.employee_id,
+        schedule_date: entry.schedule_date,
+        name: entry.employees?.name || "Unknown Employee",
+        role: entry.employees?.role || "Unknown Role"
+    }));
+
     return {
         response: { ok: true },
-        data: []
+        data: formattedData
     };
 }
 
-export async function getTodayBathroomAssignment() {
+export async function getTodayBathroomAssignment(employeeDbId) {
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data, error } = await supabase
+        .from("bathroom_schedule")
+        .select(`
+      id,
+      employee_id,
+      schedule_date,
+      employees (
+        name,
+        role
+      )
+    `)
+        .eq("employee_id", employeeDbId)
+        .eq("schedule_date", today)
+        .maybeSingle();
+
+    if (error || !data) {
+        return {
+            response: { ok: true },
+            data: null
+        };
+    }
+
     return {
         response: { ok: true },
-        data: null
+        data: {
+            id: data.id,
+            employee_id: data.employee_id,
+            schedule_date: data.schedule_date,
+            name: data.employees?.name,
+            role: data.employees?.role
+        }
     };
 }
 
-export async function createBathroomAssignment() {
+export async function createBathroomAssignment(employeeDbId, scheduleDate, isAdmin) {
+    if (!isAdmin) {
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can create bathroom assignments." }
+        };
+    }
+
+    const { data: existingAssignment } = await supabase
+        .from("bathroom_schedule")
+        .select("*")
+        .eq("employee_id", employeeDbId)
+        .eq("schedule_date", scheduleDate)
+        .maybeSingle();
+
+    if (existingAssignment) {
+        return {
+            response: { ok: false },
+            data: { error: "This employee is already scheduled for that date." }
+        };
+    }
+
+    const { error } = await supabase
+        .from("bathroom_schedule")
+        .insert({
+            employee_id: employeeDbId,
+            schedule_date: scheduleDate
+        });
+
     return {
-        response: { ok: false },
-        data: { error: "Bathroom scheduling is being moved to Supabase next." }
+        response: { ok: !error },
+        data: error
+            ? { error: error.message }
+            : { message: "Bathroom assignment created successfully." }
     };
 }
 
-export async function deleteBathroomAssignment() {
+export async function deleteBathroomAssignment(scheduleId, isAdmin) {
+    if (!isAdmin) {
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can delete bathroom assignments." }
+        };
+    }
+
+    const { error } = await supabase
+        .from("bathroom_schedule")
+        .delete()
+        .eq("id", scheduleId);
+
     return {
-        response: { ok: false },
-        data: { error: "Bathroom scheduling is being moved to Supabase next." }
+        response: { ok: !error },
+        data: error
+            ? { error: error.message }
+            : { message: "Bathroom assignment deleted successfully." }
     };
 }
 
-export async function autoAssignBathroomSchedule() {
+export async function autoAssignBathroomSchedule(isAdmin) {
+    if (!isAdmin) {
+        return {
+            response: { ok: false },
+            data: { error: "Only admins can auto-assign bathroom schedules." }
+        };
+    }
+
+    const { data: employees, error: employeeError } = await supabase
+        .from("employees")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+    if (employeeError || !employees || employees.length === 0) {
+        return {
+            response: { ok: false },
+            data: { error: "Could not load employees for auto assignment." }
+        };
+    }
+
+    const today = new Date();
+    const scheduleRows = [];
+
+    for (let i = 0; i < 7; i += 1) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+
+        const employee = employees[i % employees.length];
+
+        scheduleRows.push({
+            employee_id: employee.id,
+            schedule_date: date.toISOString().split("T")[0]
+        });
+    }
+
+    const { error: deleteError } = await supabase
+        .from("bathroom_schedule")
+        .delete()
+        .gte("schedule_date", new Date().toISOString().split("T")[0]);
+
+    if (deleteError) {
+        return {
+            response: { ok: false },
+            data: { error: deleteError.message }
+        };
+    }
+
+    const { error: insertError } = await supabase
+        .from("bathroom_schedule")
+        .insert(scheduleRows);
+
     return {
-        response: { ok: false },
-        data: { error: "Bathroom scheduling is being moved to Supabase next." }
+        response: { ok: !insertError },
+        data: insertError
+            ? { error: insertError.message }
+            : { message: "Bathroom schedule auto-assigned for the next 7 days." }
     };
 }
