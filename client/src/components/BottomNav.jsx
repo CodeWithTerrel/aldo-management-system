@@ -15,6 +15,11 @@ export default function BottomNav() {
                 <span>Bathroom</span>
             </Link>
 
+            <Link to="/history" className={location.pathname === "/history" ? "active" : ""}>
+                <span className="nav-icon">🕘</span>
+                <span>History</span>
+            </Link>
+
             <Link to="/employees" className={location.pathname === "/employees" ? "active" : ""}>
                 <span className="nav-icon">👥</span>
                 <span>Employees</span>
