@@ -6,7 +6,8 @@ import {
     getBathroomSchedule,
     createBathroomAssignment,
     deleteBathroomAssignment,
-    autoAssignBathroomSchedule
+    autoAssignBathroomSchedule,
+    completeBathroomAssignment
 } from "../services/api";
 
 export default function BathroomPage() {
@@ -15,6 +16,7 @@ export default function BathroomPage() {
     const [schedule, setSchedule] = useState([]);
     const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
     const [selectedDate, setSelectedDate] = useState("");
+    const [cleaningNote, setCleaningNote] = useState("");
     const [message, setMessage] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
 
@@ -28,8 +30,7 @@ export default function BathroomPage() {
             return;
         }
 
-        const parsedEmployee = JSON.parse(storedEmployee);
-        setEmployee(parsedEmployee);
+        setEmployee(JSON.parse(storedEmployee));
     }, [navigate]);
 
     useEffect(() => {
@@ -40,35 +41,25 @@ export default function BathroomPage() {
     }, [employee]);
 
     async function loadEmployees() {
-        try {
-            const { response, data } = await getBathroomEmployees();
+        const { response, data } = await getBathroomEmployees();
 
-            if (!response.ok) {
-                setErrorMessage("Could not load employees.");
-                return;
-            }
-
-            setEmployees(data);
-        } catch (error) {
-            console.error(error);
+        if (!response.ok) {
             setErrorMessage("Could not load employees.");
+            return;
         }
+
+        setEmployees(data);
     }
 
     async function loadSchedule() {
-        try {
-            const { response, data } = await getBathroomSchedule();
+        const { response, data } = await getBathroomSchedule();
 
-            if (!response.ok) {
-                setErrorMessage("Could not load bathroom schedule.");
-                return;
-            }
-
-            setSchedule(data);
-        } catch (error) {
-            console.error(error);
+        if (!response.ok) {
             setErrorMessage("Could not load bathroom schedule.");
+            return;
         }
+
+        setSchedule(data);
     }
 
     async function handleCreateAssignment(event) {
@@ -81,67 +72,75 @@ export default function BathroomPage() {
             return;
         }
 
-        try {
-            const { response, data } = await createBathroomAssignment(
-                selectedEmployeeId,
-                selectedDate,
-                employee.is_admin,
-                employee.id
-            );
+        const { response, data } = await createBathroomAssignment(
+            selectedEmployeeId,
+            selectedDate,
+            employee.is_admin,
+            employee.id,
+            cleaningNote
+        );
 
-            if (!response.ok) {
-                setErrorMessage(data.error || "Could not create assignment.");
-                return;
-            }
-
-            setMessage(data.message);
-            setSelectedEmployeeId("");
-            setSelectedDate("");
-            loadSchedule();
-        } catch (error) {
-            console.error(error);
-            setErrorMessage("Could not create assignment.");
+        if (!response.ok) {
+            setErrorMessage(data.error || "Could not create assignment.");
+            return;
         }
+
+        setMessage(data.message);
+        setSelectedEmployeeId("");
+        setSelectedDate("");
+        setCleaningNote("");
+        loadSchedule();
     }
 
     async function handleDeleteAssignment(scheduleId) {
         setMessage("");
         setErrorMessage("");
 
-        try {
-            const { response, data } = await deleteBathroomAssignment(scheduleId, employee.is_admin);
+        const { response, data } = await deleteBathroomAssignment(
+            scheduleId,
+            employee.is_admin
+        );
 
-            if (!response.ok) {
-                setErrorMessage(data.error || "Could not delete assignment.");
-                return;
-            }
-
-            setMessage(data.message);
-            loadSchedule();
-        } catch (error) {
-            console.error(error);
-            setErrorMessage("Could not delete assignment.");
+        if (!response.ok) {
+            setErrorMessage(data.error || "Could not delete assignment.");
+            return;
         }
+
+        setMessage(data.message);
+        loadSchedule();
     }
 
     async function handleAutoAssign() {
         setMessage("");
         setErrorMessage("");
 
-        try {
-            const { response, data } = await autoAssignBathroomSchedule(employee.is_admin, employee.id);
+        const { response, data } = await autoAssignBathroomSchedule(employee.is_admin);
 
-            if (!response.ok) {
-                setErrorMessage(data.error || "Could not auto-assign bathroom schedule.");
-                return;
-            }
-
-            setMessage(data.message);
-            loadSchedule();
-        } catch (error) {
-            console.error(error);
-            setErrorMessage("Could not auto-assign bathroom schedule.");
+        if (!response.ok) {
+            setErrorMessage(data.error || "Could not auto-assign bathroom schedule.");
+            return;
         }
+
+        setMessage(data.message);
+        loadSchedule();
+    }
+
+    async function handleCompleteAssignment(scheduleId) {
+        setMessage("");
+        setErrorMessage("");
+
+        const { response, data } = await completeBathroomAssignment(
+            scheduleId,
+            employee.id
+        );
+
+        if (!response.ok) {
+            setErrorMessage(data.error || "Could not complete bathroom task.");
+            return;
+        }
+
+        setMessage(data.message);
+        loadSchedule();
     }
 
     return (
@@ -207,6 +206,18 @@ export default function BathroomPage() {
                                 />
                             </div>
 
+                            <div className="form-group">
+                                <label htmlFor="cleaningNote">Cleaning Note</label>
+                                <textarea
+                                    id="cleaningNote"
+                                    value={cleaningNote}
+                                    onChange={(event) => setCleaningNote(event.target.value)}
+                                    placeholder="Example: Refill paper towel, wipe mirrors, check garbage, mop floor..."
+                                    className="native-input"
+                                    rows="4"
+                                />
+                            </div>
+
                             <div className="actions-row">
                                 <button type="submit" className="green-btn">
                                     Add Schedule Tile
@@ -232,24 +243,57 @@ export default function BathroomPage() {
                     {schedule.length === 0 ? (
                         <p>No bathroom assignments yet.</p>
                     ) : (
-                        schedule.map((entry) => (
-                            <div key={entry.id} className="tile-list-item">
-                                <div className="tile-title">{entry.name}</div>
-                                <div className="tile-subtext">{entry.role}</div>
-                                <div className="tile-subtext">{entry.schedule_date}</div>
+                        schedule.map((entry) => {
+                            const isAssignedEmployee = employee?.id === entry.employee_id;
 
-                                {employee?.is_admin && (
-                                    <div className="actions-row">
-                                        <button
-                                            className="danger-btn"
-                                            onClick={() => handleDeleteAssignment(entry.id)}
-                                        >
-                                            Delete Tile
-                                        </button>
+                            return (
+                                <div key={entry.id} className="tile-list-item">
+                                    <div className="tile-title">{entry.name}</div>
+                                    <div className="tile-subtext">{entry.role}</div>
+                                    <div className="tile-subtext">{entry.schedule_date}</div>
+
+                                    {entry.cleaning_note && (
+                                        <div className="bathroom-note">
+                                            <strong>Note:</strong> {entry.cleaning_note}
+                                        </div>
+                                    )}
+
+                                    <div className={entry.is_completed ? "complete-chip" : "pending-chip"}>
+                                        {entry.is_completed ? "Completed" : "Pending"}
                                     </div>
-                                )}
-                            </div>
-                        ))
+
+                                    {entry.completed_at && (
+                                        <div className="tile-subtext">
+                                            Completed at{" "}
+                                            {new Date(entry.completed_at).toLocaleTimeString([], {
+                                                hour: "numeric",
+                                                minute: "2-digit"
+                                            })}
+                                        </div>
+                                    )}
+
+                                    <div className="actions-row">
+                                        {isAssignedEmployee && !entry.is_completed && (
+                                            <button
+                                                className="green-btn"
+                                                onClick={() => handleCompleteAssignment(entry.id)}
+                                            >
+                                                Mark Complete
+                                            </button>
+                                        )}
+
+                                        {employee?.is_admin && (
+                                            <button
+                                                className="danger-btn"
+                                                onClick={() => handleDeleteAssignment(entry.id)}
+                                            >
+                                                Delete Tile
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
                     )}
                 </div>
             </div>
