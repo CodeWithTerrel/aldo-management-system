@@ -442,3 +442,33 @@ select {
     line-height: 1;
   }
 }
+
+.history-day-card {
+  margin-bottom: 16px;
+}
+
+.history-entry {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-entry:last-child {
+  border-bottom: none;
+}
+
+.history-mfind-name {
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+
+.history-detail {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.history-duration {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+}
