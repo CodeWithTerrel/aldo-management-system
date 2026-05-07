@@ -189,19 +189,58 @@
 
 import { supabase } from "../lib/supabase";
 
-export async function loginEmployee(employeeId) {
-    const { data, error } = await supabase
-        .from("employees")
-        .select("*")
-        .eq("employee_id", employeeId)
-        .single();
+  // LOGIN + EMPLOYEES
+
+export async function checkEmployeeHasPassword(employeeId) {
+    const { data, error } = await supabase.rpc("employee_has_password", {
+        employee_number: employeeId
+    });
+
+    return {
+        response: { ok: !error },
+        data: error ? { error: error.message } : { hasPassword: data }
+    };
+}
+
+export async function setupEmployeePassword(employeeId, newPassword) {
+    const { data, error } = await supabase.rpc("setup_employee_password", {
+        employee_number: employeeId,
+        new_password: newPassword
+    });
 
     return {
         response: { ok: !error },
         data: error
-            ? { error: "Employee not found" }
-            : { message: "Login successful", employee: data }
+            ? { error: error.message }
+            : { message: "Password created successfully.", employee: data[0] }
     };
+}
+
+export async function loginEmployeeWithPassword(employeeId, password) {
+    const { data, error } = await supabase.rpc("login_employee_with_password", {
+        employee_number: employeeId,
+        login_password: password
+    });
+
+    if (error || !data || data.length === 0) {
+        return {
+            response: { ok: false },
+            data: { error: "Invalid employee ID or password." }
+        };
+    }
+
+    return {
+        response: { ok: true },
+        data: {
+            message: "Login successful",
+            employee: data[0]
+        }
+    };
+}
+
+/* Temporary support for old login name */
+export async function loginEmployee(employeeId) {
+    return checkEmployeeHasPassword(employeeId);
 }
 
 export async function getEmployees() {
@@ -288,6 +327,8 @@ export async function deleteEmployee(id, requesterIsAdmin) {
             : { message: "Employee deleted successfully." }
     };
 }
+
+//m-finds
 
 export async function getMfinds() {
     const { data, error } = await supabase
@@ -493,7 +534,68 @@ export async function releaseMfind(employeeDbId) {
     };
 }
 
-/* Bathroom functions are still temporary. */
+//m-find history
+
+export async function getMfindHistory() {
+    const { data, error } = await supabase
+        .from("mfind_assignments")
+        .select(`
+      id,
+      assigned_at,
+      released_at,
+      status,
+      employees (
+        name
+      ),
+      mfinds (
+        mfind_name
+      )
+    `)
+        .order("assigned_at", { ascending: false });
+
+    if (error) {
+        return {
+            response: { ok: false },
+            data: { error: error.message }
+        };
+    }
+
+    const formattedData = data.map((entry) => ({
+        id: entry.id,
+        employee_name: entry.employees?.name || "Unknown Employee",
+        mfind_name: entry.mfinds?.mfind_name || "Unknown M-Find",
+        assigned_at: entry.assigned_at,
+        released_at: entry.released_at,
+        status: entry.status,
+        duration: calculateDuration(entry.assigned_at, entry.released_at)
+    }));
+
+    return {
+        response: { ok: true },
+        data: formattedData
+    };
+}
+
+function calculateDuration(startTime, endTime) {
+    if (!startTime || !endTime) {
+        return "Still active";
+    }
+
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const differenceMs = end - start;
+
+    const hours = Math.floor(differenceMs / (1000 * 60 * 60));
+    const minutes = Math.floor((differenceMs / (1000 * 60)) % 60);
+
+    if (hours === 0) {
+        return `${minutes} min`;
+    }
+
+    return `${hours} hr ${minutes} min`;
+}
+
+//Bathroom schedule
 
 export async function getBathroomEmployees() {
     return getEmployees();
@@ -506,6 +608,10 @@ export async function getBathroomSchedule() {
       id,
       employee_id,
       schedule_date,
+      cleaning_note,
+      is_completed,
+      completed_at,
+      completed_by_employee_id,
       employees (
         name,
         role
@@ -524,6 +630,10 @@ export async function getBathroomSchedule() {
         id: entry.id,
         employee_id: entry.employee_id,
         schedule_date: entry.schedule_date,
+        cleaning_note: entry.cleaning_note,
+        is_completed: entry.is_completed,
+        completed_at: entry.completed_at,
+        completed_by_employee_id: entry.completed_by_employee_id,
         name: entry.employees?.name || "Unknown Employee",
         role: entry.employees?.role || "Unknown Role"
     }));
@@ -543,6 +653,9 @@ export async function getTodayBathroomAssignment(employeeDbId) {
       id,
       employee_id,
       schedule_date,
+      cleaning_note,
+      is_completed,
+      completed_at,
       employees (
         name,
         role
@@ -565,13 +678,16 @@ export async function getTodayBathroomAssignment(employeeDbId) {
             id: data.id,
             employee_id: data.employee_id,
             schedule_date: data.schedule_date,
+            cleaning_note: data.cleaning_note,
+            is_completed: data.is_completed,
+            completed_at: data.completed_at,
             name: data.employees?.name,
             role: data.employees?.role
         }
     };
 }
 
-export async function createBathroomAssignment(employeeDbId, scheduleDate, isAdmin) {
+export async function createBathroomAssignment(employeeDbId, scheduleDate, isAdmin, assignedByEmployeeDbId, cleaningNote) {
     if (!isAdmin) {
         return {
             response: { ok: false },
@@ -597,7 +713,8 @@ export async function createBathroomAssignment(employeeDbId, scheduleDate, isAdm
         .from("bathroom_schedule")
         .insert({
             employee_id: employeeDbId,
-            schedule_date: scheduleDate
+            schedule_date: scheduleDate,
+            cleaning_note: cleaningNote || null
         });
 
     return {
@@ -660,7 +777,9 @@ export async function autoAssignBathroomSchedule(isAdmin) {
 
         scheduleRows.push({
             employee_id: employee.id,
-            schedule_date: date.toISOString().split("T")[0]
+            schedule_date: date.toISOString().split("T")[0],
+            cleaning_note: "Complete regular bathroom cleaning duties.",
+            is_completed: false
         });
     }
 
@@ -685,5 +804,24 @@ export async function autoAssignBathroomSchedule(isAdmin) {
         data: insertError
             ? { error: insertError.message }
             : { message: "Bathroom schedule auto-assigned for the next 7 days." }
+    };
+}
+
+export async function completeBathroomAssignment(scheduleId, employeeDbId) {
+    const { error } = await supabase
+        .from("bathroom_schedule")
+        .update({
+            is_completed: true,
+            completed_at: new Date().toISOString(),
+            completed_by_employee_id: employeeDbId
+        })
+        .eq("id", scheduleId)
+        .eq("employee_id", employeeDbId);
+
+    return {
+        response: { ok: !error },
+        data: error
+            ? { error: error.message }
+            : { message: "Bathroom task marked as complete." }
     };
 }
