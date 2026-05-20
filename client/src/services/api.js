@@ -602,7 +602,7 @@ export async function getBathroomEmployees() {
 }
 
 export async function getBathroomSchedule() {
-    const { data, error } = await supabase
+    const { data: scheduleData, error: scheduleError } = await supabase
         .from("bathroom_schedule")
         .select(`
       id,
@@ -611,32 +611,45 @@ export async function getBathroomSchedule() {
       cleaning_note,
       is_completed,
       completed_at,
-      completed_by_employee_id,
-      employees (
-        name,
-        role
-      )
+      completed_by_employee_id
     `)
         .order("schedule_date", { ascending: true });
 
-    if (error) {
+    if (scheduleError) {
         return {
             response: { ok: false },
-            data: { error: error.message }
+            data: { error: scheduleError.message }
         };
     }
 
-    const formattedData = data.map((entry) => ({
-        id: entry.id,
-        employee_id: entry.employee_id,
-        schedule_date: entry.schedule_date,
-        cleaning_note: entry.cleaning_note,
-        is_completed: entry.is_completed,
-        completed_at: entry.completed_at,
-        completed_by_employee_id: entry.completed_by_employee_id,
-        name: entry.employees?.name || "Unknown Employee",
-        role: entry.employees?.role || "Unknown Role"
-    }));
+    const { data: employeesData, error: employeesError } = await supabase
+        .from("employees")
+        .select("id, name, role");
+
+    if (employeesError) {
+        return {
+            response: { ok: false },
+            data: { error: employeesError.message }
+        };
+    }
+
+    const formattedData = scheduleData.map((entry) => {
+        const matchedEmployee = employeesData.find(
+            (employee) => employee.id === entry.employee_id
+        );
+
+        return {
+            id: entry.id,
+            employee_id: entry.employee_id,
+            schedule_date: entry.schedule_date,
+            cleaning_note: entry.cleaning_note,
+            is_completed: entry.is_completed,
+            completed_at: entry.completed_at,
+            completed_by_employee_id: entry.completed_by_employee_id,
+            name: matchedEmployee?.name || "Unknown Employee",
+            role: matchedEmployee?.role || "Unknown Role"
+        };
+    });
 
     return {
         response: { ok: true },
@@ -647,7 +660,7 @@ export async function getBathroomSchedule() {
 export async function getTodayBathroomAssignment(employeeDbId) {
     const today = new Date().toISOString().split("T")[0];
 
-    const { data, error } = await supabase
+    const { data: assignmentData, error: assignmentError } = await supabase
         .from("bathroom_schedule")
         .select(`
       id,
@@ -655,34 +668,36 @@ export async function getTodayBathroomAssignment(employeeDbId) {
       schedule_date,
       cleaning_note,
       is_completed,
-      completed_at,
-      employees (
-        name,
-        role
-      )
+      completed_at
     `)
         .eq("employee_id", employeeDbId)
         .eq("schedule_date", today)
         .maybeSingle();
 
-    if (error || !data) {
+    if (assignmentError || !assignmentData) {
         return {
             response: { ok: true },
             data: null
         };
     }
 
+    const { data: employeeData } = await supabase
+        .from("employees")
+        .select("name, role")
+        .eq("id", employeeDbId)
+        .maybeSingle();
+
     return {
         response: { ok: true },
         data: {
-            id: data.id,
-            employee_id: data.employee_id,
-            schedule_date: data.schedule_date,
-            cleaning_note: data.cleaning_note,
-            is_completed: data.is_completed,
-            completed_at: data.completed_at,
-            name: data.employees?.name,
-            role: data.employees?.role
+            id: assignmentData.id,
+            employee_id: assignmentData.employee_id,
+            schedule_date: assignmentData.schedule_date,
+            cleaning_note: assignmentData.cleaning_note,
+            is_completed: assignmentData.is_completed,
+            completed_at: assignmentData.completed_at,
+            name: employeeData?.name,
+            role: employeeData?.role
         }
     };
 }
