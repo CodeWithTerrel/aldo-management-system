@@ -39,7 +39,7 @@ export default function EmployeeDetailsPage() {
     }, [navigate]);
 
     useEffect(() => {
-        if (currentEmployee) {
+        if (currentEmployee?.is_admin) {
             loadEmployees();
         }
     }, [currentEmployee]);
@@ -137,6 +137,18 @@ export default function EmployeeDetailsPage() {
             setMessage(data.message);
             cancelEditing();
             loadEmployees();
+
+            if (currentEmployee.id === id) {
+                const updatedCurrentEmployee = {
+                    ...currentEmployee,
+                    name: editingName,
+                    role: editingRole,
+                    is_admin: editingIsAdmin
+                };
+
+                localStorage.setItem("employee", JSON.stringify(updatedCurrentEmployee));
+                setCurrentEmployee(updatedCurrentEmployee);
+            }
         } catch (error) {
             console.error(error);
             setErrorMessage("Could not update employee.");
@@ -146,6 +158,14 @@ export default function EmployeeDetailsPage() {
     async function handleDeleteEmployee(id) {
         setMessage("");
         setErrorMessage("");
+
+        const shouldDelete = window.confirm(
+            "Are you sure you want to delete this employee? This action cannot be undone."
+        );
+
+        if (!shouldDelete) {
+            return;
+        }
 
         try {
             const { response, data } = await deleteEmployee(id, currentEmployee.is_admin);
@@ -173,8 +193,15 @@ export default function EmployeeDetailsPage() {
     return (
         <div className="page-container">
             <div className="top-section">
-                <h1>Employee Details</h1>
-                <p>Employee information and admin tools.</p>
+                <div className="page-heading-row">
+                    <div className="logo-badge">AM</div>
+                    <div>
+                        <h1 style={{ margin: 0 }}>Employee Details</h1>
+                        <p className="small-muted" style={{ margin: "4px 0 0 0" }}>
+                            Account information and admin tools
+                        </p>
+                    </div>
+                </div>
             </div>
 
             {message && (
@@ -196,183 +223,203 @@ export default function EmployeeDetailsPage() {
             <div className="section-spacing">
                 <div className="card">
                     <h2>Your Account</h2>
+
                     <div className="info-row">
                         <span className="info-label">Name: </span>
                         <span>{currentEmployee?.name || "Loading..."}</span>
                     </div>
+
                     <div className="info-row">
                         <span className="info-label">Employee ID: </span>
                         <span>{currentEmployee?.employee_id || "Loading..."}</span>
                     </div>
+
                     <div className="info-row">
                         <span className="info-label">Role: </span>
                         <span>{currentEmployee?.role || "Loading..."}</span>
                     </div>
+
                     <div className="info-row">
-                        <span className="info-label">Admin: </span>
-                        <span>{currentEmployee?.is_admin ? "Yes" : "No"}</span>
+                        <span className="info-label">Access Level: </span>
+                        <span>{currentEmployee?.is_admin ? "Admin" : "Employee"}</span>
                     </div>
                 </div>
             </div>
 
-            {currentEmployee?.is_admin && (
+            {!currentEmployee?.is_admin && (
                 <div className="section-spacing">
                     <div className="card">
-                        <h2>Add Employee</h2>
-
-                        <form onSubmit={handleCreateEmployee}>
-                            <div className="form-group">
-                                <label htmlFor="newEmployeeId">Employee ID</label>
-                                <input
-                                    id="newEmployeeId"
-                                    type="text"
-                                    value={newEmployeeId}
-                                    onChange={(event) => setNewEmployeeId(event.target.value)}
-                                    placeholder="Enter employee ID"
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label htmlFor="newEmployeeName">Name</label>
-                                <input
-                                    id="newEmployeeName"
-                                    type="text"
-                                    value={newEmployeeName}
-                                    onChange={(event) => setNewEmployeeName(event.target.value)}
-                                    placeholder="Enter employee name"
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label htmlFor="newEmployeeRole">Role</label>
-                                <input
-                                    id="newEmployeeRole"
-                                    type="text"
-                                    value={newEmployeeRole}
-                                    onChange={(event) => setNewEmployeeRole(event.target.value)}
-                                    placeholder="Enter employee role"
-                                />
-                            </div>
-
-                            <label className="checkbox-row">
-                                <input
-                                    type="checkbox"
-                                    checked={newEmployeeIsAdmin}
-                                    onChange={(event) => setNewEmployeeIsAdmin(event.target.checked)}
-                                />
-                                <span>Admin Access</span>
-                            </label>
-
-                            <div className="actions-row">
-                                <button type="submit" className="primary-btn">
-                                    Add Employee
-                                </button>
-                            </div>
-                        </form>
+                        <h2>Staff Privacy</h2>
+                        <p>
+                            Full employee management is only available to managers and admins.
+                        </p>
+                        <p className="small-muted">
+                            You can still view your own account information here.
+                        </p>
                     </div>
                 </div>
             )}
 
-            <div className="section-spacing">
-                <div className="card">
-                    <h2>Employee List</h2>
+            {currentEmployee?.is_admin && (
+                <>
+                    <div className="section-spacing">
+                        <div className="card">
+                            <h2>Add Employee</h2>
 
-                    {employees.length === 0 ? (
-                        <p>No employees found.</p>
-                    ) : (
-                        employees.map((employee) => (
-                            <div key={employee.id} className="list-item">
-                                {editingEmployeeId === employee.id ? (
-                                    <>
-                                        <div className="form-group">
-                                            <label>Name</label>
-                                            <input
-                                                type="text"
-                                                value={editingName}
-                                                onChange={(event) => setEditingName(event.target.value)}
-                                            />
-                                        </div>
+                            <form onSubmit={handleCreateEmployee}>
+                                <div className="form-group">
+                                    <label htmlFor="newEmployeeId">Employee ID</label>
+                                    <input
+                                        id="newEmployeeId"
+                                        type="text"
+                                        value={newEmployeeId}
+                                        onChange={(event) => setNewEmployeeId(event.target.value)}
+                                        placeholder="Enter employee ID"
+                                    />
+                                </div>
 
-                                        <div className="form-group">
-                                            <label>Role</label>
-                                            <input
-                                                type="text"
-                                                value={editingRole}
-                                                onChange={(event) => setEditingRole(event.target.value)}
-                                            />
-                                        </div>
+                                <div className="form-group">
+                                    <label htmlFor="newEmployeeName">Name</label>
+                                    <input
+                                        id="newEmployeeName"
+                                        type="text"
+                                        value={newEmployeeName}
+                                        onChange={(event) => setNewEmployeeName(event.target.value)}
+                                        placeholder="Enter employee name"
+                                    />
+                                </div>
 
-                                        <label className="checkbox-row">
-                                            <input
-                                                type="checkbox"
-                                                checked={editingIsAdmin}
-                                                onChange={(event) => setEditingIsAdmin(event.target.checked)}
-                                            />
-                                            <span>Admin Access</span>
-                                        </label>
+                                <div className="form-group">
+                                    <label htmlFor="newEmployeeRole">Role</label>
+                                    <input
+                                        id="newEmployeeRole"
+                                        type="text"
+                                        value={newEmployeeRole}
+                                        onChange={(event) => setNewEmployeeRole(event.target.value)}
+                                        placeholder="Enter employee role"
+                                    />
+                                </div>
 
-                                        <div className="actions-row">
-                                            <button
-                                                className="primary-btn"
-                                                onClick={() => handleUpdateEmployee(employee.id)}
-                                            >
-                                                Save
-                                            </button>
+                                <label className="checkbox-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={newEmployeeIsAdmin}
+                                        onChange={(event) => setNewEmployeeIsAdmin(event.target.checked)}
+                                    />
+                                    <span>Admin Access</span>
+                                </label>
 
-                                            <button
-                                                className="secondary-btn"
-                                                onClick={cancelEditing}
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="info-row">
-                                            <span className="info-label">Name: </span>
-                                            <span>{employee.name}</span>
-                                        </div>
+                                <div className="actions-row">
+                                    <button type="submit" className="primary-btn">
+                                        Add Employee
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
 
-                                        <div className="info-row">
-                                            <span className="info-label">Employee ID: </span>
-                                            <span>{employee.employee_id}</span>
-                                        </div>
+                    <div className="section-spacing">
+                        <div className="card">
+                            <h2>Employee List</h2>
 
-                                        <div className="info-row">
-                                            <span className="info-label">Role: </span>
-                                            <span>{employee.role}</span>
-                                        </div>
+                            {employees.length === 0 ? (
+                                <p>No employees found.</p>
+                            ) : (
+                                employees.map((employee) => (
+                                    <div key={employee.id} className="list-item">
+                                        {editingEmployeeId === employee.id ? (
+                                            <>
+                                                <div className="form-group">
+                                                    <label>Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={editingName}
+                                                        onChange={(event) => setEditingName(event.target.value)}
+                                                    />
+                                                </div>
 
-                                        <div className="info-row">
-                                            <span className="info-label">Admin: </span>
-                                            <span>{employee.is_admin ? "Yes" : "No"}</span>
-                                        </div>
+                                                <div className="form-group">
+                                                    <label>Role</label>
+                                                    <input
+                                                        type="text"
+                                                        value={editingRole}
+                                                        onChange={(event) => setEditingRole(event.target.value)}
+                                                    />
+                                                </div>
 
-                                        {currentEmployee?.is_admin && (
-                                            <div className="actions-row">
-                                                <button
-                                                    className="secondary-btn"
-                                                    onClick={() => startEditing(employee)}
-                                                >
-                                                    Edit
-                                                </button>
+                                                <label className="checkbox-row">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editingIsAdmin}
+                                                        onChange={(event) => setEditingIsAdmin(event.target.checked)}
+                                                    />
+                                                    <span>Admin Access</span>
+                                                </label>
 
-                                                <button
-                                                    className="secondary-btn"
-                                                    onClick={() => handleDeleteEmployee(employee.id)}
-                                                >
-                                                    Delete
-                                                </button>
-                                            </div>
+                                                <div className="actions-row">
+                                                    <button
+                                                        type="button"
+                                                        className="primary-btn"
+                                                        onClick={() => handleUpdateEmployee(employee.id)}
+                                                    >
+                                                        Save
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        className="secondary-btn"
+                                                        onClick={cancelEditing}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="info-row">
+                                                    <span className="info-label">Name: </span>
+                                                    <span>{employee.name}</span>
+                                                </div>
+
+                                                <div className="info-row">
+                                                    <span className="info-label">Employee ID: </span>
+                                                    <span>{employee.employee_id}</span>
+                                                </div>
+
+                                                <div className="info-row">
+                                                    <span className="info-label">Role: </span>
+                                                    <span>{employee.role}</span>
+                                                </div>
+
+                                                <div className="info-row">
+                                                    <span className="info-label">Access Level: </span>
+                                                    <span>{employee.is_admin ? "Admin" : "Employee"}</span>
+                                                </div>
+
+                                                <div className="actions-row">
+                                                    <button
+                                                        className="secondary-btn"
+                                                        onClick={() => startEditing(employee)}
+                                                    >
+                                                        Edit
+                                                    </button>
+
+                                                    <button
+                                                        className="danger-btn"
+                                                        onClick={() => handleDeleteEmployee(employee.id)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </>
                                         )}
-                                    </>
-                                )}
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
 
             <BottomNav />
         </div>
